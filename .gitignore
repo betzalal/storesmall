@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.local
+
+# Cliente
+client/node_modules/
+client/dist/
+
+# Servidor (CRÍTICO: No subir la BD ni las fotos a Github)
+server/node_modules/
+server/database.sqlite
+server/uploads/
+.DS_Store
