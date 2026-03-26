@@ -125,3 +125,101 @@ input:focus {
 ::-webkit-scrollbar-thumb:hover {
   background: #a0aec0;
 }
+
+/* Responsive Mobile Styles */
+@media (max-width: 768px) {
+  .grid-cols-2, .grid-cols-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-col {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  
+  .mobile-wrap {
+    flex-wrap: wrap !important;
+  }
+  
+  .mobile-w-full {
+    width: 100% !important;
+  }
+  
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  .show-on-mobile-block {
+    display: block !important;
+  }
+
+
+  .mobile-cards-table {
+    min-width: 100% !important;
+  }
+  .mobile-cards-table, .mobile-cards-table thead, .mobile-cards-table tbody, .mobile-cards-table th, .mobile-cards-table td, .mobile-cards-table tr { 
+    display: block !important; 
+  }
+  .mobile-cards-table thead tr { 
+    display: none !important;
+  }
+  .mobile-cards-table tr { 
+    margin-bottom: 20px;
+    border: 1px solid #ddd !important;
+    border-radius: 8px;
+    background: #fff;
+    padding: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+  .mobile-cards-table tr.variant-row {
+    margin-left: 20px !important;
+    margin-top: -10px !important;
+    border-left: 4px solid var(--secondary-color) !important;
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+    background: #f8fbff !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+  }
+  .mobile-cards-table td { 
+    border: none !important;
+    padding: 12px 15px !important;
+    position: relative;
+    text-align: left !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: flex-start !important;
+    border-bottom: 1px solid #f0f0f0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .mobile-cards-table td:last-child {
+    border-bottom: none !important;
+  }
+  .mobile-cards-table td::before { 
+    content: attr(data-label);
+    font-weight: 800;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--secondary-color);
+    margin-bottom: 8px;
+    margin-right: 0;
+    text-align: left;
+    display: block;
+  }
+
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    display: block;
+  }
+  
+  input, select, textarea {
+    font-size: 16px; /* Prevents iOS auto-zoom */
+  }
+  
+  .glass-card {
+    box-sizing: border-box;
+  }
+}

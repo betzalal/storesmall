@@ -13,24 +13,24 @@ const HistoryItem = ({ sale, user, onDelete }) => {
     return (
         <>
             <tr style={{ borderBottom: expanded ? 'none' : '1px solid #eee', background: expanded ? '#f9f9f9' : 'transparent' }}>
-                <td style={{ padding: '10px' }}>{new Date(sale.timestamp).toLocaleString()}</td>
-                <td style={{ padding: '10px' }}>
+                <td data-label="Fecha" style={{ padding: '10px' }}>{new Date(sale.timestamp).toLocaleString()}</td>
+                <td data-label="Cliente" style={{ padding: '10px' }}>
                     <div>{sale.customer_name}</div>
                     <div style={{ fontSize: '0.8rem', color: '#777' }}>{sale.customer_nit}</div>
                     {sale.customer_whatsapp && <div style={{ fontSize: '0.8rem', color: '#25D366', fontWeight: 'bold' }}>{sale.customer_whatsapp}</div>}
                 </td>
-                <td style={{ padding: '10px' }}>{sale.seller}</td>
-                <td style={{ padding: '10px' }}>{sale.payment_method}</td>
-                <td style={{ padding: '10px', fontWeight: 'bold' }}>Bs {sale.total}</td>
-                <td style={{ padding: '10px' }}>
-                    <div style={{ display: 'flex', gap: '5px' }}>
+                <td data-label="Vendedor" style={{ padding: '10px' }}>{sale.seller}</td>
+                <td data-label="Pago" style={{ padding: '10px' }}>{sale.payment_method}</td>
+                <td data-label="Total" style={{ padding: '10px', fontWeight: 'bold' }}>Bs {sale.total}</td>
+                <td data-label="Acciones" style={{ padding: '10px' }}>
+                    <div style={{ display: 'flex', gap: '15px' }}>
                         {hasDetails && (
-                            <button onClick={() => setExpanded(!expanded)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                                {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            <button onClick={() => setExpanded(!expanded)} style={{ background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: '5px 10px', display: 'flex', gap: '5px' }}>
+                                {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />} <span className="hide-on-mobile">Detalles</span>
                             </button>
                         )}
                         {user?.role === 'admin' && (
-                            <button onClick={() => onDelete(sale.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'red' }} title="Eliminar Venta">
+                            <button onClick={() => onDelete(sale.id)} style={{ background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: '5px 10px' }} title="Eliminar Venta">
                                 <Trash2 size={16} />
                             </button>
                         )}
@@ -39,7 +39,7 @@ const HistoryItem = ({ sale, user, onDelete }) => {
             </tr>
             {expanded && (
                 <tr style={{ borderBottom: '1px solid #eee', background: '#f9f9f9' }}>
-                    <td colSpan="6" style={{ padding: '10px 20px' }}>
+                    <td colSpan="6" data-label="Detalle de Venta" style={{ padding: '10px 20px' }}>
                         {sale.notes && (
                             <div style={{ marginBottom: '10px', color: '#555', fontStyle: 'italic' }}>
                                 <strong>Nota:</strong> {sale.notes}
@@ -84,7 +84,7 @@ const POS = ({ selectedMonth }) => {
     const [isFastMode, setIsFastMode] = useState(false);
     const [variantsModalId, setVariantsModalId] = useState(null);
     const [fullScreenImage, setFullScreenImage] = useState(null);
-    const BACKEND_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace(/\/api$/, '');
+    const BACKEND_URL = (import.meta.env.VITE_API_URL || '').replace(/\/api$/, '');
 
     const [editingPriceId, setEditingPriceId] = useState(null); // For Catalog
     const [cartEditingId, setCartEditingId] = useState(null); // For Cart
@@ -251,12 +251,12 @@ const POS = ({ selectedMonth }) => {
     );
 
     return (
-        <div style={{ padding: '20px', height: '100%', display: 'flex', gap: '20px', overflow: 'hidden' }}>
+        <div className="mobile-col" style={{ padding: '20px', height: '100%', display: 'flex', gap: '20px', overflowY: 'auto', overflowX: 'hidden' }}>
             {/* Products Grid */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', padding: '15px' }}>
                     <h2 style={{ margin: 0 }}>Productos</h2>
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <div className="mobile-col" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', background: isFastMode ? '#28a745' : '#e0e0e0', color: isFastMode ? 'white' : '#333', padding: '8px 15px', borderRadius: '20px', fontWeight: 'bold' }}>
                             <input type="checkbox" checked={isFastMode} onChange={e => setIsFastMode(e.target.checked)} style={{ display: 'none' }} />
                             <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: isFastMode ? 'white' : '#999' }}></div>
@@ -268,7 +268,8 @@ const POS = ({ selectedMonth }) => {
                             placeholder="Buscar producto..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            style={{ width: '300px' }}
+                            className="mobile-w-full"
+                            style={{ width: '300px', maxWidth: '100%' }}
                         />
                     </div>
                 </div>
@@ -291,7 +292,7 @@ const POS = ({ selectedMonth }) => {
                                             </div>
                                         ) : (
                                             <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--secondary-color)', display: 'flex', alignItems: 'center' }}>
-                                                Bs {p.price} {variants.length > 0 && <span style={{fontSize:'0.7rem', color:'#999', marginLeft:'5px'}}>(Base)</span>}
+                                                Bs {p.price} {variants.length > 0 && <span style={{ fontSize: '0.7rem', color: '#999', marginLeft: '5px' }}>(Base)</span>}
                                                 {user?.role === 'admin' && (
                                                     <button onClick={() => { setEditingPriceId(p.id); setNewPrice(p.price); }} style={{ marginLeft: '10px', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5 }}>✏️</button>
                                                 )}
@@ -303,7 +304,7 @@ const POS = ({ selectedMonth }) => {
                                         </div>
                                     </div>
                                     {p.image_url && (
-                                        <div 
+                                        <div
                                             style={{ width: '60px', height: '60px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #ddd', flexShrink: 0, cursor: 'pointer' }}
                                             onClick={() => setFullScreenImage(`${BACKEND_URL}${p.image_url}`)}
                                             title="Ver Imagen"
@@ -337,7 +338,7 @@ const POS = ({ selectedMonth }) => {
             </div>
 
             {/* Cart Sidebar */}
-            <div className="glass-card" style={{ width: '400px', display: 'flex', flexDirection: 'column' }}>
+            <div className="glass-card mobile-w-full" style={{ width: '400px', maxWidth: '100%', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
                 <div style={{ borderBottom: '1px solid #ddd', paddingBottom: '15px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <ShoppingCart size={24} />
                     <h2 style={{ margin: 0 }}>Carrito</h2>
@@ -400,10 +401,10 @@ const POS = ({ selectedMonth }) => {
 
             {/* Checkout Modal */}
             {isCheckoutOpen && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div className="glass-card" style={{ width: '600px', background: '#fff' }}>
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
+                    <div className="glass-card mobile-w-full" style={{ width: '600px', maxWidth: '100%', background: '#fff', maxHeight: '90vh', overflowY: 'auto' }}>
                         <div className="flex-between" style={{ marginBottom: '20px' }}>
-                            <h2>Confirmar Venta {isFastMode && <span style={{fontSize: '0.8em', color: '#28a745'}}>(Modo Rápido)</span>}</h2>
+                            <h2>Confirmar Venta {isFastMode && <span style={{ fontSize: '0.8em', color: '#28a745' }}>(Modo Rápido)</span>}</h2>
                             <button onClick={() => setIsCheckoutOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
                         </div>
 
@@ -438,7 +439,7 @@ const POS = ({ selectedMonth }) => {
 
                         <div style={{ marginBottom: '20px' }}>
                             <label style={{ display: 'block', marginBottom: '5px' }}>Método de Pago</label>
-                            <div style={{ display: 'flex', gap: '10px' }}>
+                            <div className="mobile-col" style={{ display: 'flex', gap: '10px' }}>
                                 {['cash', 'qr', 'deposit'].map(method => (
                                     <button
                                         key={method}
@@ -469,8 +470,8 @@ const POS = ({ selectedMonth }) => {
                 </div>
             )}
             {isHistoryOpen && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div className="glass-card" style={{ width: '800px', background: '#fff', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
+                    <div className="glass-card mobile-w-full" style={{ width: '800px', maxWidth: '100%', background: '#fff', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
                         <div className="flex-between" style={{ padding: '20px', borderBottom: '1px solid #eee' }}>
                             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                                 <h2>Historial de Ventas</h2>
@@ -480,8 +481,8 @@ const POS = ({ selectedMonth }) => {
                             </div>
                             <button onClick={() => setIsHistoryOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={24} /></button>
                         </div>
-                        <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }} id="sales-history-content">
-                            <table id="sales-history-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <div className="table-responsive" style={{ flex: 1, overflowY: 'auto', padding: '20px' }} id="sales-history-content">
+                            <table id="sales-history-table" className="mobile-cards-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
                                 <thead>
                                     <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
                                         <th style={{ padding: '10px' }}>Fecha</th>
@@ -501,7 +502,7 @@ const POS = ({ selectedMonth }) => {
                     </div>
                 </div>
             )}
-            
+
             {/* Variants Modal */}
             {variantsModalId && (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -515,7 +516,7 @@ const POS = ({ selectedMonth }) => {
                                 <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', background: '#f5f5f5', borderRadius: '8px', border: '1px solid #eee' }}>
                                     <div>
                                         <strong style={{ fontSize: '1.1rem' }}>{v.name}</strong>
-                                        <div style={{ fontSize: '0.9rem', color: '#555', marginTop: '5px' }}>Bs {v.price} | Disp: <span style={{color: v.quantity > 0 ? 'green' : 'red', fontWeight:'bold'}}>{v.quantity}</span></div>
+                                        <div style={{ fontSize: '0.9rem', color: '#555', marginTop: '5px' }}>Bs {v.price} | Disp: <span style={{ color: v.quantity > 0 ? 'green' : 'red', fontWeight: 'bold' }}>{v.quantity}</span></div>
                                     </div>
                                     <button className="btn-primary" onClick={() => { addToCart(v); setVariantsModalId(null); }} disabled={v.quantity <= 0} style={{ opacity: v.quantity <= 0 ? 0.5 : 1, padding: '8px 15px' }}>Agregar</button>
                                 </div>

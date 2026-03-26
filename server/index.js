@@ -5,21 +5,132 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
-const db = require('./db');
+const os = require('os');
+
+const Database = require('better-sqlite3');
+const { AsyncLocalStorage } = require('async_hooks');
+const asyncLocalStorage = new AsyncLocalStorage();
+
+const db = new Proxy({}, {
+    get(target, prop) {
+        const currentDb = asyncLocalStorage.getStore();
+        if (!currentDb) {
+            console.error('No database context for this request');
+            return undefined;
+        }
+        const val = currentDb[prop];
+        return typeof val === 'function' ? val.bind(currentDb) : val;
+    }
+});
+
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SECRET_KEY = 'sawalife_secret_key_change_in_prod';
+const SECRET_KEY = process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex');
+
+// Security Headers
+app.use(helmet({
+    contentSecurityPolicy: false // Deactivates basic CSP so frontend doesn't break locally/cross-origin easily, but adds XSS/Frame/HSTS protections.
+}));
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
+
+// Rate Limiters
+const recoverLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // Limit each IP to 5 requests per window
+    message: { error: 'Demasiados intentos de recuperación. Intente de nuevo en 15 minutos.' }
+});
+
+const uploadLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 Hour
+    max: 15, // Limit each IP to 15 sync-uploads per hour
+    message: { error: 'Rebasaste el límite de subidas por hora para proteger contra Spam.' }
+});
 
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
 }
 app.use('/uploads', express.static(uploadDir));
+
+const sessionsDir = path.join(__dirname, 'sessions');
+if (!fs.existsSync(sessionsDir)) {
+    fs.mkdirSync(sessionsDir);
+}
+
+const backupsDir = path.join(__dirname, 'backups');
+if (!fs.existsSync(backupsDir)) {
+    fs.mkdirSync(backupsDir);
+}
+
+// Cleanup backups older than 15 days (runs once a day)
+setInterval(() => {
+    fs.readdir(backupsDir, (err, files) => {
+        if (err) return;
+        const now = Date.now();
+        const MAX_AGE = 15 * 24 * 60 * 60 * 1000;
+        files.forEach(file => {
+            const filePath = path.join(backupsDir, file);
+            fs.stat(filePath, (err, stats) => {
+                if (!err && (now - stats.mtimeMs > MAX_AGE)) {
+                    fs.unlink(filePath, () => {});
+                }
+            });
+        });
+    });
+}, 24 * 60 * 60 * 1000);
+
+const sessionConnections = {};
+const pendingConflicts = {};
+
+function getDbConnection(sessionId) {
+    if (sessionConnections[sessionId]) return sessionConnections[sessionId];
+    const dbPath = path.join(sessionsDir, `${sessionId}.db`);
+    if (!fs.existsSync(dbPath)) return null;
+    const connection = new Database(dbPath, { verbose: console.log });
+    sessionConnections[sessionId] = connection;
+    return connection;
+}
+
+app.use((req, res, next) => {
+    if (req.path.startsWith('/uploads')) return next();
+    
+    const rawSessionId = req.headers['x-session-id'] || req.query.session_id;
+    let sessionId = null;
+    
+    // Global Security Sanitization (Path Traversal Protection)
+    if (rawSessionId) {
+        if (!/^[a-zA-Z0-9_-]+$/.test(rawSessionId)) {
+            return res.status(400).json({ error: 'Formato de Session ID inválido o peligroso.' });
+        }
+        sessionId = rawSessionId;
+    }
+
+    if (req.path === '/api/system/sync-upload' || req.path === '/api/system/network-info') {
+        return next();
+    }
+
+    if (!sessionId) {
+        return res.status(401).json({ error: 'No Session ID provided' });
+    }
+
+    const connection = getDbConnection(sessionId);
+    if (!connection) {
+        if (req.path === '/api/system/status' || req.path === '/api/system/sync-download' || req.path === '/api/system/recover') {
+            return next(); 
+        }
+        return res.status(404).json({ error: 'Session database not loaded', needs_sync: true });
+    }
+
+    asyncLocalStorage.run(connection, () => {
+        next();
+    });
+});
 
 // Middleware to update Last Seen
 app.use((req, res, next) => {
@@ -54,6 +165,280 @@ const verifyAdmin = (req, res, next) => {
         return res.status(401).json({ error: 'Invalid token' });
     }
 };
+
+// System Status and Setup
+app.get('/api/system/network-info', (req, res) => {
+    try {
+        let localIp = '127.0.0.1';
+        try {
+            const nets = os.networkInterfaces();
+            for (const name of Object.keys(nets)) {
+                for (const net of nets[name]) {
+                    if (net.family === 'IPv4' && !net.internal) {
+                        localIp = net.address;
+                        break;
+                    }
+                }
+                if (localIp !== '127.0.0.1') break;
+            }
+        } catch(e) { console.error(e); }
+        
+        let status = 'waiting_data';
+        const raws = req.headers['x-session-id'] || req.query.session_id;
+        const sID = raws && /^[a-zA-Z0-9_-]+$/.test(raws) ? raws : null;
+        
+        if (sID) {
+            const connection = getDbConnection(sID);
+            if (connection) {
+                try {
+                    const check = connection.prepare('SELECT count(*) as count FROM users').get();
+                    if (check && check.count > 0) status = 'ready';
+                } catch (e) { }
+            }
+        }
+
+        return res.json({ ip: localIp, port: PORT, status });
+    } catch(err) {
+        console.error('network-info error:', err);
+        return res.status(500).json({ error: 'Internal Error' });
+    }
+});
+
+app.post('/api/system/sync-upload', uploadLimiter, express.raw({ type: '*/*', limit: '50mb' }), (req, res) => {
+    const rawSessionId = req.headers['x-session-id'] || req.query.session_id;
+    if (!rawSessionId || !/^[a-zA-Z0-9_-]+$/.test(rawSessionId)) return res.status(400).json({ error: 'Invalid or missing session specified' });
+    const sessionId = rawSessionId;
+
+    try {
+        if (!req.body || req.body.length === 0) {
+            return res.status(400).json({ error: 'No file provided' });
+        }
+        
+        if (sessionConnections[sessionId]) {
+            sessionConnections[sessionId].close();
+            delete sessionConnections[sessionId];
+        }
+
+        const dbPath = path.join(sessionsDir, `${sessionId}.db`);
+        fs.writeFileSync(dbPath, req.body);
+
+        // Backup mechanism: open DB, find users, save copies and detect conflicts
+        try {
+            const tempDb = new Database(dbPath);
+            const userRow = tempDb.prepare("SELECT username FROM users WHERE role='admin' LIMIT 1").get() || tempDb.prepare("SELECT username FROM users LIMIT 1").get();
+            
+            if (userRow && userRow.username) {
+                const username = userRow.username;
+                const uploadedSales = tempDb.prepare('SELECT count(*) as count FROM sales').get().count;
+                tempDb.close();
+                
+                const validFilename = username.replace(/[^a-zA-Z0-9]/g, '_');
+                const backupPath = path.join(backupsDir, `${validFilename}.db`);
+                
+                if (fs.existsSync(backupPath)) {
+                    // Check backup sales to avoid unintentional overwrite
+                    try {
+                        const backupDb = new Database(backupPath);
+                        const backupSales = backupDb.prepare('SELECT count(*) as count FROM sales').get().count;
+                        backupDb.close();
+                        
+                        if (backupSales > uploadedSales) {
+                            pendingConflicts[sessionId] = { username, backupSales, uploadedSales, uploadedDbPath: dbPath, backupPath };
+                            return res.json({ success: true, message: 'Upload paused. Conflict detected.' });
+                        }
+                    } catch (e) { console.error('Error reading backup DB for conflict', e); }
+                }
+                
+                fs.copyFileSync(dbPath, backupPath);
+            } else {
+                tempDb.close();
+            }
+        } catch (backupErr) {
+            console.error('Backup failed during sync', backupErr);
+        }
+
+        res.json({ success: true, message: 'Database updated successfully' });
+    } catch (error) {
+        console.error('Error in sync-upload:', error);
+        res.status(500).json({ error: 'Failed to sync database' });
+    }
+});
+
+app.post('/api/system/resolve-conflict', (req, res) => {
+    const { session_id, action } = req.body;
+    if (!session_id || !/^[a-zA-Z0-9_-]+$/.test(session_id) || !action || !pendingConflicts[session_id]) {
+        return res.status(400).json({ error: 'No active conflict found for this session' });
+    }
+    
+    const conflict = pendingConflicts[session_id];
+    
+    try {
+        if (sessionConnections[session_id]) {
+            sessionConnections[session_id].close();
+            delete sessionConnections[session_id];
+        }
+
+        if (action === 'recover') {
+            fs.copyFileSync(conflict.backupPath, conflict.uploadedDbPath);
+        } else if (action === 'overwrite') {
+            fs.copyFileSync(conflict.uploadedDbPath, conflict.backupPath);
+        }
+        
+        delete pendingConflicts[session_id];
+        res.json({ success: true });
+    } catch (e) {
+        console.error('Error resolving conflict', e);
+        res.status(500).json({ error: 'Conflict resolution failed' });
+    }
+});
+
+app.post('/api/system/recover', recoverLimiter, (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Missing username or password' });
+
+    const validFilename = username.replace(/[^a-zA-Z0-9]/g, '_');
+    const backupPath = path.join(backupsDir, `${validFilename}.db`);
+
+    if (!fs.existsSync(backupPath)) {
+        return res.status(404).json({ error: 'No se encontró un respaldo (15 días de inactividad o usuario erróneo)' });
+    }
+
+    try {
+        const tempDb = new Database(backupPath);
+        const user = tempDb.prepare('SELECT * FROM users WHERE username = ?').get(username);
+        
+        if (!user || !bcrypt.compareSync(password, user.password)) {
+            tempDb.close();
+            return res.status(401).json({ error: 'Contraseña incorrecta' });
+        }
+        
+        tempDb.close();
+
+        // Generate a new session for the recovered DB
+        const newSessionId = require('crypto').randomBytes(16).toString('hex');
+        const newSessionPath = path.join(sessionsDir, `${newSessionId}.db`);
+        
+        // Copy the backup into the new active session
+        fs.copyFileSync(backupPath, newSessionPath);
+
+        res.json({ success: true, session_id: newSessionId });
+    } catch (e) {
+        console.error('Recovery error', e);
+        res.status(500).json({ error: 'Falló la recuperación' });
+    }
+});
+
+app.get('/api/system/sync-download', (req, res) => {
+    const rawSessionId = req.headers['x-session-id'] || req.query.session_id;
+    if (!rawSessionId || !/^[a-zA-Z0-9_-]+$/.test(rawSessionId)) return res.status(400).json({ error: 'Invalid or missing session specified' });
+    const sessionId = rawSessionId;
+
+    const dbPath = path.join(sessionsDir, `${sessionId}.db`);
+    if (fs.existsSync(dbPath)) {
+        res.download(dbPath, 'empresa.db', (err) => {
+            if (!err) {
+                if (sessionConnections[sessionId]) {
+                    sessionConnections[sessionId].close();
+                    delete sessionConnections[sessionId];
+                }
+                setTimeout(() => {
+                    try { fs.unlinkSync(dbPath); } catch (e) {}
+                }, 1000);
+            }
+        });
+    } else {
+        res.status(404).json({ error: 'Database not found' });
+    }
+});
+
+app.get('/api/system/status', (req, res) => {
+    const rawSessionId = req.headers['x-session-id'] || req.query.session_id;
+    if (!rawSessionId || !/^[a-zA-Z0-9_-]+$/.test(rawSessionId)) return res.json({ isSetupComplete: false });
+    const sessionId = rawSessionId;
+    
+    if (pendingConflicts[sessionId]) {
+        return res.json({ 
+            isSetupComplete: false, 
+            hasConflict: true, 
+            conflictData: pendingConflicts[sessionId] 
+        });
+    }
+    
+    const connection = getDbConnection(sessionId);
+    if (!connection) return res.json({ isSetupComplete: false });
+    
+    try {
+        const userCount = connection.prepare('SELECT count(*) as count FROM users').get();
+        res.json({ isSetupComplete: userCount.count > 0 });
+    } catch (e) {
+        res.json({ isSetupComplete: false });
+    }
+});
+
+app.post('/api/system/setup', (req, res) => {
+    const { companyName, tagline, logoData, username, password } = req.body;
+    if (!username || !password || !companyName) {
+        return res.status(400).json({ error: 'Faltan campos obligatorios (Nombre, Usuario, Contraseña).' });
+    }
+
+    try {
+        const userCount = db.prepare('SELECT count(*) as count FROM users').get();
+        if (userCount.count > 0) {
+            return res.status(403).json({ error: 'System already setup' });
+        }
+
+        db.transaction(() => {
+            const setConfig = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+            setConfig.run('companyName', companyName);
+            setConfig.run('companyTagline', tagline || '');
+
+            let logoUrl = '/assets/logo.jpg';
+            if (logoData && typeof logoData === 'string' && logoData.startsWith('data:image/')) {
+                const matches = logoData.match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/);
+                if (matches && matches.length === 3) {
+                    const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+                    const buffer = Buffer.from(matches[2], 'base64');
+                    const safeName = require('crypto').randomBytes(8).toString('hex');
+                    const filename = `logo_${safeName}.${ext}`;
+                    fs.writeFileSync(path.join(uploadDir, filename), buffer);
+                    logoUrl = `/uploads/${filename}`;
+                }
+            }
+            setConfig.run('logoUrl', logoUrl);
+
+            const storeInfo = db.prepare('INSERT INTO stores (name, location, type) VALUES (?, ?, ?)').run('Tienda Principal', 'Central', 'Matriz');
+            const storeId = storeInfo.lastInsertRowid;
+
+            const hash = bcrypt.hashSync(password, 10);
+            db.prepare('INSERT INTO users (username, password, role, store_id) VALUES (?, ?, ?, ?)').run(username, hash, 'admin', storeId);
+        })();
+
+        const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+        const token = jwt.sign({ id: user.id, role: user.role, store_id: user.store_id }, SECRET_KEY, { expiresIn: '12h' });
+        
+        res.json({ success: true, token, user: { id: user.id, username: user.username, role: user.role, store_id: user.store_id } });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Failed during setup' });
+    }
+});
+
+app.get('/api/system/company', (req, res) => {
+    try {
+        const getSetting = (key, defaultVal) => {
+            const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+            return row ? row.value : defaultVal;
+        };
+
+        res.json({
+            name: getSetting('companyName', 'SAWALIFE'),
+            tagline: getSetting('companyTagline', 'Filtros purificadores de agua'),
+            logoUrl: getSetting('logoUrl', '/assets/logo.jpg')
+        });
+    } catch (e) {
+        res.json({ name: 'SAWALIFE', tagline: 'Filtros purificadores de agua', logoUrl: '/assets/logo.jpg' });
+    }
+});
 
 // Auth Routes
 app.post('/api/login', (req, res) => {
@@ -376,7 +761,39 @@ app.delete('/api/sales/:id', verifyAdmin, (req, res) => {
     }
 });
 
-// Quotations
+// Quotation Templates
+app.get('/api/quotations/templates', (req, res) => {
+    try {
+        const templates = db.prepare('SELECT * FROM quote_item_templates').all();
+        res.json(templates);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to fetch templates' });
+    }
+});
+
+app.post('/api/quotations/templates', (req, res) => {
+    const { label, description } = req.body;
+    try {
+        const info = db.prepare('INSERT INTO quote_item_templates (label, description) VALUES (?, ?)').run(label, description);
+        res.json({ id: info.lastInsertRowid, label, description });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to save template' });
+    }
+});
+
+app.delete('/api/quotations/templates/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+        db.prepare('DELETE FROM quote_item_templates WHERE id = ?').run(id);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to delete template' });
+    }
+});
+
 // Quotations
 app.get('/api/quotations/next-number', (req, res) => {
     try {
@@ -444,6 +861,15 @@ app.get('/api/quotations', (req, res) => {
         console.error(err);
         res.status(500).json({ error: 'Failed to fetch quotations' });
     }
+});
+
+// Serve static frontend files in production
+app.use(express.static(path.join(__dirname, '../client/dist')));
+app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) {
+        return res.status(404).json({ error: 'Route not found' });
+    }
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
 
 app.listen(PORT, () => {

@@ -11,24 +11,24 @@ const HistoryItem = ({ sale, user, onDelete }) => {
     return (
         <>
             <tr style={{ borderBottom: expanded ? 'none' : '1px solid #eee', background: expanded ? '#f9f9f9' : 'transparent' }}>
-                <td style={{ padding: '10px' }}>{new Date(sale.timestamp).toLocaleString()}</td>
-                <td style={{ padding: '10px' }}>
+                <td data-label="Fecha" style={{ padding: '10px' }}>{new Date(sale.timestamp).toLocaleString()}</td>
+                <td data-label="Cliente" style={{ padding: '10px' }}>
                     <div>{sale.customer_name}</div>
                     <div style={{ fontSize: '0.8rem', color: '#777' }}>{sale.customer_nit}</div>
                     {sale.customer_whatsapp && <div style={{ fontSize: '0.8rem', color: '#25D366', fontWeight: 'bold' }}>{sale.customer_whatsapp}</div>}
                 </td>
-                <td style={{ padding: '10px' }}>{sale.seller}</td>
-                <td style={{ padding: '10px' }}>{sale.payment_method}</td>
-                <td style={{ padding: '10px', fontWeight: 'bold' }}>Bs {(sale.total || 0).toFixed(2)}</td>
-                <td style={{ padding: '10px' }}>
-                    <div style={{ display: 'flex', gap: '5px' }}>
+                <td data-label="Vendedor" style={{ padding: '10px' }}>{sale.seller}</td>
+                <td data-label="Pago" style={{ padding: '10px' }}>{sale.payment_method}</td>
+                <td data-label="Total" style={{ padding: '10px', fontWeight: 'bold' }}>Bs {(sale.total || 0).toFixed(2)}</td>
+                <td data-label="Acciones" style={{ padding: '10px' }}>
+                    <div style={{ display: 'flex', gap: '15px' }}>
                         {hasDetails && (
-                            <button onClick={() => setExpanded(!expanded)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                                {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            <button onClick={() => setExpanded(!expanded)} style={{ background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: '5px 10px', display: 'flex', gap: '5px' }}>
+                                {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />} <span className="hide-on-mobile">Detalles</span>
                             </button>
                         )}
                         {user?.role === 'admin' && (
-                            <button onClick={() => onDelete(sale.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'red' }} title="Eliminar Venta">
+                            <button onClick={() => onDelete(sale.id)} style={{ background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: '5px 10px' }} title="Eliminar Venta">
                                 <Trash2 size={16} />
                             </button>
                         )}
@@ -37,7 +37,7 @@ const HistoryItem = ({ sale, user, onDelete }) => {
             </tr>
             {expanded && (
                 <tr style={{ borderBottom: '1px solid #eee', background: '#f9f9f9' }}>
-                    <td colSpan="6" style={{ padding: '10px 20px' }}>
+                    <td colSpan="6" data-label="Detalle de venta" style={{ padding: '10px 20px' }}>
                         {sale.notes && (
                             <div style={{ marginBottom: '10px', color: '#555', fontStyle: 'italic' }}>
                                 <strong>Nota:</strong> {sale.notes}
@@ -209,9 +209,9 @@ const SalesReports = ({ selectedMonth }) => {
     return (
         <div style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div className="glass-card" style={{ padding: '20px', marginBottom: '20px' }}>
-                <div className="flex-between" style={{ marginBottom: '15px' }}>
+                <div className="flex-between mobile-col" style={{ marginBottom: '15px', gap: '15px' }}>
                     <h2 style={{ margin: 0 }}>Reportes de Ventas ({selectedMonth})</h2>
-                    <div style={{ display: 'flex', gap: '10px' }}>
+                    <div className="mobile-wrap" style={{ display: 'flex', gap: '10px' }}>
                         <button onClick={() => setViewMode('list')} className="btn-primary" style={{ background: viewMode === 'list' ? 'var(--primary-color)' : '#ccc' }}>
                             <List size={18} style={{ marginRight: '5px', verticalAlign: 'middle' }} /> Lista
                         </button>
@@ -226,8 +226,8 @@ const SalesReports = ({ selectedMonth }) => {
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', background: 'white', padding: '5px 10px', borderRadius: '20px', flex: 1 }}>
+                <div className="mobile-wrap" style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', background: 'white', padding: '5px 10px', borderRadius: '20px', minWidth: '200px', flex: 1 }}>
                         <Search size={18} color="#999" style={{ marginRight: '5px' }} />
                         <input 
                             type="text" 
@@ -253,8 +253,8 @@ const SalesReports = ({ selectedMonth }) => {
 
             <div className="glass-card" style={{ flex: 1, padding: '20px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 {viewMode === 'list' ? (
-                    <div style={{ overflowY: 'auto' }}>
-                        <table id="sales-reports-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <div className="table-responsive" style={{ overflowY: 'auto' }}>
+                        <table id="sales-reports-table" className="mobile-cards-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
                             <thead>
                                 <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
                                     <th style={{ padding: '10px' }}>Fecha</th>

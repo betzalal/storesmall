@@ -12,6 +12,13 @@ const schema = `
     name TEXT NOT NULL,
     location TEXT,
     type TEXT,
+    address TEXT,
+    phone TEXT,
+    rent_status TEXT,
+    size_m2 TEXT,
+    pros_cons TEXT,
+    map_url TEXT,
+    other_details TEXT,
     config TEXT
   );
 
@@ -92,6 +99,17 @@ const schema = `
     timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(store_id) REFERENCES stores(id)
   );
+
+  CREATE TABLE IF NOT EXISTS quote_item_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    description TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
 `;
 
 db.exec(schema);
@@ -128,46 +146,20 @@ try {
     console.log('Migrating: Adding image_url column to products table');
     db.prepare('ALTER TABLE products ADD COLUMN image_url TEXT').run();
   }
+
+  const storeColumns = db.prepare('PRAGMA table_info(stores)').all();
+  if (!storeColumns.some(c => c.name === 'address')) {
+    console.log('Migrating: Adding missing detailed columns to stores table');
+    db.prepare('ALTER TABLE stores ADD COLUMN address TEXT').run();
+    db.prepare('ALTER TABLE stores ADD COLUMN phone TEXT').run();
+    db.prepare('ALTER TABLE stores ADD COLUMN rent_status TEXT').run();
+    db.prepare('ALTER TABLE stores ADD COLUMN size_m2 TEXT').run();
+    db.prepare('ALTER TABLE stores ADD COLUMN pros_cons TEXT').run();
+    db.prepare('ALTER TABLE stores ADD COLUMN map_url TEXT').run();
+    db.prepare('ALTER TABLE stores ADD COLUMN other_details TEXT').run();
+  }
 } catch (e) {
   console.error('Migration error:', e);
 }
-
-// Seed Data
-const seed = () => {
-  // Check if store exists
-  const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(1);
-  if (!store) {
-    db.prepare('INSERT INTO stores (name, location, type) VALUES (?, ?, ?)').run('Tienda Central', 'Central', 'Principal');
-  }
-
-  // Check if admin exists
-  const admin = db.prepare('SELECT * FROM users WHERE username = ?').get('betzalal');
-  if (!admin) {
-    const hash = bcrypt.hashSync('*MorrowindJustcause_2*', 10);
-    db.prepare('INSERT INTO users (username, password, role, store_id) VALUES (?, ?, ?, ?)').run('betzalal', hash, 'admin', 1);
-  }
-
-  // Seed Products
-  const products = [
-    { code: 'E1', name: 'Filtros Stefany', price: 100 },
-    { code: 'E2', name: 'Filtro "agua segura"', price: 150 },
-    { code: 'E3', name: 'Filtro Tapp', price: 200 },
-    { code: 'E4', name: 'Dispensers de agua', price: 500 },
-    { code: 'E5', name: 'Botellones 20 litros', price: 50 },
-    { code: 'E6', name: 'Botellones 5 litros', price: 20 },
-    { code: 'E7', name: 'Grifos', price: 80 }
-  ];
-
-  const insertProduct = db.prepare('INSERT OR IGNORE INTO products (code, name, price) VALUES (@code, @name, @price)');
-  const insertInventory = db.prepare('INSERT OR IGNORE INTO inventory (store_id, product_id, quantity) VALUES (?, ?, ?)');
-
-  products.forEach(p => {
-    insertProduct.run(p);
-    const prod = db.prepare('SELECT id FROM products WHERE code = ?').get(p.code);
-    insertInventory.run(1, prod.id, 100); // Initial stock 100 for testing
-  });
-};
-
-seed();
 
 module.exports = db;
